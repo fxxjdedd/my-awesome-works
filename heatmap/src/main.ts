@@ -15,7 +15,7 @@ map.on('complete', () => {
   console.log("complete")
 })
 const glCustomLayer = new (AMap as any).GLCustomLayer({
-  zIndex: 1,
+  zIndex: 10,
   render: () => {
     render();
   },
@@ -142,9 +142,16 @@ function requestMapRender() {
 function render() {
   if (!theregl) return;
   console.log("render");
+
+  const bounds = map.getBounds().toJSON();
+  const viewBounds = [
+    ...customCoords.lngLatToCoord(bounds.slice(0, 2)),
+    ...customCoords.lngLatToCoord(bounds.slice(2, 4)),
+  ]
+
   theregl._refresh();
-  renderGrayTexture();
-  renderGridHeatMap();
+  renderGrayTexture(viewBounds);
+  renderGridHeatMap(viewBounds);
 }
 
 let grayTex: REGL.Framebuffer2D | null = null;
@@ -152,9 +159,10 @@ let grayTex2: REGL.Framebuffer2D | null = null;
 let grayTexSize;
 let grayCMD: REGL.DrawCommand;
 let gridCMD: REGL.DrawCommand;
-function renderGrayTexture() {
+function renderGrayTexture(viewBounds: number[]) {
+  const andBbox = calcBboxAnd(viewBounds, uniforms.bbox);
+
   if (!grayTex) {
-    console.log("###", theregl._gl.drawingBufferWidth)
     grayTex = theregl.framebuffer({
       width: theregl._gl.drawingBufferWidth,
       height: theregl._gl.drawingBufferHeight,
@@ -228,13 +236,16 @@ function renderGrayTexture() {
         stride: 4 * 3,
       },
       radius: uniforms.radius,
-      bbox: uniforms.bbox,
+      bbox: andBbox,
       min: uniforms.minmax[0],
       max: uniforms.minmax[1],
     });
   });
 }
-function renderGridHeatMap() {
+function renderGridHeatMap(viewBounds: number[]) {
+
+  const andBbox = calcBboxAnd(viewBounds, uniforms.bbox);
+
   if (!gridCMD) {
     gridCMD = theregl({
       vert: gridShader.vert,
@@ -282,9 +293,19 @@ function renderGridHeatMap() {
     position: gridMesh.vertices,
     index: gridMesh.indices,
     mvp: customCoords.getMVPMatrix(),
-    bbox: uniforms.bbox,
+    bbox: andBbox,
     radius: uniforms.radius,
     size: uniforms.size,
     opacity: 1.0,
+    depth: true,
   });
+}
+
+function calcBboxAnd(b1: number[], b2: number[]) {
+  const and = []
+  and[0] = Math.max(b1[0], b2[0]);
+  and[1] = Math.max(b1[1], b2[1]);
+  and[2] = Math.min(b1[2], b2[2]);
+  and[3] = Math.min(b1[3], b2[3]);
+  return and;
 }
