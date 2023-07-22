@@ -68,7 +68,7 @@ export default {
         vec3 color = vec3(0.0);
         float a = 1.0;
         color = mix(vec3(0, 0, 1), gradient[0].yzw, fade(0.0, gradient[0].x, grayAlpha));
-        for (int i = 0; i < 8; i++) {
+        for (int i = 7; i >= 0; i--) {
             if (gradient[i].x >= grayAlpha) {
                 color = mix(gradient[i - 1].yzw, gradient[i].yzw, fade(gradient[i - 1].x, gradient[i].x, grayAlpha));
                 break;
