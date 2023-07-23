@@ -9,12 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "gl-matrix": "^3.4.3",
     "regl": "^2.1.0"
   },
   "devDependencies": {
-    "typescript": "^4.9.3",
-    "vite": "^4.0.0",
     "@amap/amap-jsapi-types": "^0.0.13",
-    "@types/geojson": "^7946.0.10"
+    "@types/geojson": "^7946.0.10",
+    "typescript": "^4.9.3",
+    "vite": "^4.0.0"
   }
 }

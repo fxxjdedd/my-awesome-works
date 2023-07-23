@@ -1,6 +1,9 @@
 import REGL from "regl";
+import { mat4, vec4 } from "gl-matrix";
 import grayShader from "./gray.shader";
 import gridShader from "./grid.shader";
+
+const USE_ZCOMPARE_FOG = false;
 
 const map = new AMap.Map("map", {
   zooms: [4, 7],
@@ -11,9 +14,9 @@ const map = new AMap.Map("map", {
   pitch: 40,
 });
 console.log(map);
-map.on('complete', () => {
-  console.log("complete")
-})
+map.on("complete", () => {
+  console.log("complete");
+});
 const glCustomLayer = new (AMap as any).GLCustomLayer({
   zIndex: 10,
   render: () => {
@@ -47,7 +50,8 @@ const uniforms = {
     0, 0 / 255, 0 / 255, 0 / 255,
   ],
   size: [1000, 1000], // grid size
-  height: 30 * 10000,
+  height: 40 * 10000,
+  skyCameraZ: 0,
 };
 const grayMesh = {
   attributes: {
@@ -138,7 +142,6 @@ function requestMapRender() {
   (map as any).render();
 }
 
-
 function render() {
   if (!theregl) return;
   console.log("render");
@@ -147,7 +150,18 @@ function render() {
   const viewBounds = [
     ...customCoords.lngLatToCoord(bounds.slice(0, 2)),
     ...customCoords.lngLatToCoord(bounds.slice(2, 4)),
-  ]
+  ];
+
+  const view = (map as any).getView();
+  const viewStatus = view.getStatus();
+  let skyHeight = viewStatus.skyHeight; // -1 ~ 1
+  skyHeight = (skyHeight + 1) / 2; // 0 ~ 1
+  const skyHeightPixel = viewStatus.size[1] * (1 - skyHeight);
+  const skyMiddlePoint = [viewStatus.size[0]/2, skyHeightPixel];
+  const skyWorldCoord = screenToWorldCoord(skyMiddlePoint[0], skyMiddlePoint[1]);
+  const skyCameraCoord = worldCoordToCamera(skyWorldCoord[0], skyWorldCoord[1]);
+
+  uniforms.skyCameraZ = skyCameraCoord[2];
 
   theregl._refresh();
   renderGrayTexture(viewBounds);
@@ -203,11 +217,11 @@ function renderGrayTexture(viewBounds: number[]) {
       blend: {
         enable: true,
         func: {
-          srcRGB: 'src alpha',
+          srcRGB: "src alpha",
           srcAlpha: 1,
-          dstRGB: 'one minus src alpha',
-          dstAlpha: 'one minus src alpha',
-        }
+          dstRGB: "one minus src alpha",
+          dstAlpha: "one minus src alpha",
+        },
       },
       elements: theregl.prop("index"),
     });
@@ -236,20 +250,22 @@ function renderGrayTexture(viewBounds: number[]) {
         stride: 4 * 3,
       },
       radius: uniforms.radius,
-      bbox: andBbox,
+      bbox: !USE_ZCOMPARE_FOG ? andBbox : uniforms.bbox,
       min: uniforms.minmax[0],
       max: uniforms.minmax[1],
     });
   });
 }
 function renderGridHeatMap(viewBounds: number[]) {
-
   const andBbox = calcBboxAnd(viewBounds, uniforms.bbox);
 
   if (!gridCMD) {
     gridCMD = theregl({
       vert: gridShader.vert,
-      frag: gridShader.frag,
+      frag: `
+      ${USE_ZCOMPARE_FOG ? '#define USE_ZCOMPARE_FOG' : ''}
+      ${gridShader.frag}
+      `,
       attributes: {
         position: theregl.prop("position"),
       },
@@ -263,6 +279,7 @@ function renderGridHeatMap(viewBounds: number[]) {
         heightBezier: theregl.prop("heightBezier"),
         radius: theregl.prop("radius"),
         gradient: theregl.prop("gradient"),
+        skyCameraZ: theregl.prop("skyCameraZ"),
       },
       depth: {
         enable: true,
@@ -270,11 +287,11 @@ function renderGridHeatMap(viewBounds: number[]) {
       blend: {
         enable: true,
         func: {
-          srcRGB: 'src alpha',
+          srcRGB: "src alpha",
           srcAlpha: 1,
-          dstRGB: 'one minus src alpha',
-          dstAlpha: 'one minus src alpha',
-        }
+          dstRGB: "one minus src alpha",
+          dstAlpha: "one minus src alpha",
+        },
       },
       cull: {
         enable: true,
@@ -293,19 +310,58 @@ function renderGridHeatMap(viewBounds: number[]) {
     position: gridMesh.vertices,
     index: gridMesh.indices,
     mvp: customCoords.getMVPMatrix(),
-    bbox: andBbox,
+    bbox: !USE_ZCOMPARE_FOG ? andBbox : uniforms.bbox,
     radius: uniforms.radius,
     size: uniforms.size,
+    skyCameraZ: uniforms.skyCameraZ,
     opacity: 1.0,
     depth: true,
   });
 }
 
 function calcBboxAnd(b1: number[], b2: number[]) {
-  const and = []
+  const and = [];
   and[0] = Math.max(b1[0], b2[0]);
   and[1] = Math.max(b1[1], b2[1]);
   and[2] = Math.min(b1[2], b2[2]);
   and[3] = Math.min(b1[3], b2[3]);
   return and;
 }
+
+function screenToWorldCoord(x: number, y: number) {
+  const view = (map as any).getView();
+  const { iu: far, tu: near } = view;
+  const status = view.getStatus();
+  const { mvpMatrix, size } = status;
+  const mvpMatrixInvert = mat4.invert(mat4.create(), mvpMatrix);
+
+  const xN = (x / size[0]) * 2 - 1;
+  const yN = 1 - (y / size[1]) * 2;
+
+  const nearN = vec4.fromValues(xN, yN, -1, 1);
+  const farN = vec4.fromValues(xN, yN, 1, 1);
+
+  const nearClip = vec4.scale(vec4.create(), nearN, near);
+  const farClip = vec4.scale(vec4.create(), farN, far);
+
+  const nearWorldCoord = vec4.transformMat4(vec4.create(), nearClip, mvpMatrixInvert);
+  const farWorldCoord = vec4.transformMat4(vec4.create(), farClip, mvpMatrixInvert);
+
+  const scale = nearWorldCoord[2] / (nearWorldCoord[2] - farWorldCoord[2]);
+
+  const intersectionWorldCoordX = nearWorldCoord[0] - scale * (nearWorldCoord[0] - farWorldCoord[0]);
+  const intersectionWorldCoordY = nearWorldCoord[1] - scale * (nearWorldCoord[1] - farWorldCoord[1]);
+
+  return [intersectionWorldCoordX, intersectionWorldCoordY];
+}
+
+function worldCoordToCamera(coordX: number, coordY: number) {
+  const view = (map as any).getView();
+  const camera = view.cu; // camera
+  const viewMatrix = camera.Lu(); // camera.getViewMatrix
+  const coordWorld = vec4.fromValues(coordX, coordY, 0, 1);
+  const coordCamera = vec4.transformMat4(vec4.create(), coordWorld, viewMatrix);
+  return coordCamera;
+}
+
+console.log(map);

@@ -56,6 +56,7 @@ export default {
     uniform sampler2D texture;
     uniform float opacity;
     uniform vec4 gradient[8];
+    uniform float skyCameraZ;
 
     float fade(float low, float high, float value) {
         if (value < low || value > high) {
@@ -81,6 +82,14 @@ export default {
         vec4 gray = texture2D(texture, vUv);
         gl_FragColor = getColor(gray.a);
         gl_FragColor.a *= opacity;
+        float fragCameraZ = -1.0 / gl_FragCoord.w;
+
+        #ifdef USE_ZCOMPARE_FOG
+        if (fragCameraZ <= skyCameraZ) {
+            float factor = smoothstep(1.0, 0.0, (skyCameraZ - fragCameraZ) / 50.0);
+            gl_FragColor.a *= factor;
+        }
+        #endif
     }
     `,
 }
