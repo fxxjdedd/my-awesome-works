@@ -31,12 +31,12 @@ export default {
     }
 
     void main() {
-      vec4 b = vec4(bbox.xy - radius, bbox.zw + radius);
+      vec4 b = vec4(bbox.xy, bbox.zw );
       vec2 center = vec2((b.z + b.x) / 2.0, (b.w + b.y) / 2.0);
       vec2 bboxSize = vec2((b.z - b.x), (b.w - b.y)) / 2.0;
 
       vec4 posDir = getPosByDirection(position.xy - center, position.z, radius);
-      gl_Position = vec4(posDir.xy / bboxSize, 0, 1);
+      gl_Position = vec4(posDir.xy / bboxSize, 0, 1); // 以数据 bbox 为局部坐标系相当于
       vValue = value;
       vDir = posDir.zw * sqrt(radius * radius * 2.0);
       vRadius = radius;
@@ -54,7 +54,7 @@ export default {
     
     void main() {
       float len = length(vDir);
-      gl_FragColor = vec4(1, 0, 0, (vRadius - len) / vRadius * (vValue - min) / (max - min));
+      gl_FragColor = vec4(1, 0, 0, (vRadius - len) / vRadius * (vValue - min) / (max - min)); // 算得一个越往中心越黑的图
     }
     `,
 }

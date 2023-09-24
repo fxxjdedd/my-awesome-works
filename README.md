@@ -13,3 +13,8 @@ https://github.com/fxxjdedd/simple-map
 ## map visualization
 https://github.com/fxxjdedd/my-awesome-works/tree/main/heatmap
 ![](./heatmap.png)
+
+## shader
+https://github.com/fxxjdedd/three-planet-vr
+![](./planet-v0.gif)
+![](./unexpected-beautiful-sphere.gif)
